@@ -3,7 +3,7 @@ function Get-LastModifiedZip {
     return Get-ChildItem -Path $folder -Filter "ArchivosModificados_*.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 }
 
-function Prepare-InFolder {
+function Initialize-InFolder {
     param([string]$inFolder)
     if ([string]::IsNullOrWhiteSpace($inFolder)) {
         Write-Host "La variable yourInFolder no está definida correctamente." -ForegroundColor Red
@@ -13,7 +13,7 @@ function Prepare-InFolder {
     New-Item -ItemType Directory -Path $inFolder -Force | Out-Null
 }
 
-function Expand-ZipToInFolder {
+function Expand-ArchiveToFolder {
     param([string]$zipPath, [string]$inFolder)
     Expand-Archive -Path $zipPath -DestinationPath $inFolder -Force
 }
@@ -25,6 +25,31 @@ function Get-FilesToBackup {
         $sourceFile = Join-Path $sourceFolder $relativePath
         if (Test-Path $sourceFile) { $sourceFile }
     }
+}
+
+function Test-FilesAreDifferent {
+    param(
+        [array]$filesToBackup,
+        [string]$inFolder,
+        [string]$sourceFolder
+    )
+    $archivosDiferentes = $false
+    foreach ($file in $filesToBackup) {
+        $relativePath = $file.Substring($sourceFolder.Length + 1)
+        $inFile = Join-Path $inFolder $relativePath
+        if (Test-Path $inFile) {
+            $hashSource = Get-FileHash -Path $file -Algorithm SHA256
+            $hashIn = Get-FileHash -Path $inFile -Algorithm SHA256
+            if ($hashSource.Hash -ne $hashIn.Hash) {
+                $archivosDiferentes = $true
+                break
+            }
+        } else {
+            $archivosDiferentes = $true
+            break
+        }
+    }
+    return $archivosDiferentes
 }
 
 function Backup-OriginalFiles {
@@ -100,3 +125,5 @@ function Restore-FromBackupZip {
         Remove-Item -Path $tempRestore -Recurse -Force
     }
 }
+
+Export-ModuleMember -Function Get-LastModifiedZip,Initialize-InFolder,Expand-ArchiveToFolder,Get-FilesToBackup,Test-FilesAreDifferent,Backup-OriginalFiles,Copy-RestoredFilesToSource,Restore-FromBackupZip
