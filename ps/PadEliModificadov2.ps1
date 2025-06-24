@@ -1,8 +1,8 @@
 # Ruta donde están los archivos a revisar
-#$sourceFolder = "C:\gabriel\repo\IntSchools\Schools\Schooll.Boletin.MVC"
-$sourceFolder = "C:\gabriel\repo\IntSchools\Publish\SchoolsMvc"
+$sourceFolder = "C:/gabriel/repo/padeli/Macnab/Src/PadeliSrc/macnab_web/bin/Release/net6.0"
+
 # Carpeta donde se guardará el archivo ZIP
-$outputFolder = "C:\gabriel\_autoPublish\schools_web"
+$outputFolder = "C:\gabriel\_autoPublish\padeli_web"
  
 # Nombre del archivo ZIP (con fecha actual)
 $dateString = Get-Date -Format "yyyyMMdd hhmm"
@@ -11,11 +11,37 @@ $zipFilePath = Join-Path $outputFolder $zipFileName
 
 # Obtener archivos modificados hoy, excluyendo carpetas obj, cacheboletin, _logs
 $today = Get-Date -UFormat "%Y-%m-%d"
-$excludeFolders = @('obj', 'cacheboletin', '_log','controllers')
+$excludeFolders = @('obj', 'cacheboletin', '_log','controllers','_Logs',
+                "Controllers", 
+                "obj", 
+                "Logs", 
+                "Exports",
+                "reactApp",
+                "Files",
+                ".csproj.",
+                "Microsoft",
+                "System",
+                "SQL",
+                "Serilog",
+                "Rotativa",
+                "Entity",
+                "Castle",
+                "Humanizer",
+                "EPPlus",
+                "dotnet",
+                "Dapper",
+                "Newtonsoft",
+                "RestSharp",
+                "win-x64",
+                "Macnab.deps",
+                "pdb",
+                "cache")
+
 $filesToInclude = Get-ChildItem -Path $sourceFolder -Recurse -File | Where-Object {
     $_.LastWriteTime.ToString("yyyy-MM-dd") -eq $today -and
     ($excludeFolders -notcontains $_.Directory.Name) -and
-    ($excludeFolders -notcontains $_.Directory.Parent?.Name)
+    ($excludeFolders -notcontains $_.Directory.Parent?.Name) -and
+    ($excludeFolders -notcontains $_.Name)
 }
 
 if ($filesToInclude) {
@@ -49,4 +75,5 @@ if ($filesToInclude) {
 } else {
   Write-Host "ℹ️ No se encontraron archivos modificados hoy." -ForegroundColor Yellow
 }
-explorer $outputFolder 
+
+explorer.exe $outputFolder
