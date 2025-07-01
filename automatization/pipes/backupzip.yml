@@ -1,0 +1,99 @@
+
+
+# cache:
+#   key: "$CI_COMMIT_REF_SLUG-dotnet-1"
+#   paths:
+#     - ~/.nuget/packages/
+#     - $BUILD_FOLDER
+
+variables:
+  DEPLOYPROD: 'DEPLOY'
+  NET_ENVIRONMENT: 'Development'
+
+
+.build_job:
+  stage: build
+  script:
+    - echo $DEPLOY_FOLDER
+    - dotnet restore $BUILD_PROJECT
+    - dotnet build $BUILD_PROJECT
+    - dotnet publish -c Release -r win-x64 /p:EnvironmentName=$NET_ENVIRONMENT $BUILD_PROJECT --output $BUILD_FOLDER
+  artifacts:
+    paths:
+      - $BUILD_FOLDER
+      
+.backup_zip:
+  script:
+    - echo "Realizando backup de $BACKUP_FOLDER"
+    - |
+      $backupDir = Join-Path -Path (Split-Path -Parent -Path $BACKUP_FOLDER) -ChildPath "backup"
+      if (-not (Test-Path $backupDir)) {
+          New-Item -ItemType Directory -Path $backupDir | Out-Null
+          Write-Host "📁 Carpeta de backup creada: $backupDir"
+      }
+
+      # Asignar variable de entorno GitLab a contexto de PowerShell
+      if (-not (Test-Path $BACKUP_FOLDER)) {
+          Write-Host "❌ Carpeta no encontrada: $BACKUP_FOLDER" -ForegroundColor Red
+      }else{
+        $date = Get-Date -Format 'yyyyMMdd_HHmm'
+        $folderName = Split-Path -Leaf -Path $BACKUP_FOLDER
+        Write-Host "✅ Carpeta seleccionada: $folderName"
+
+        $destino = Join-Path -Path (Split-Path -Parent -Path $BACKUP_FOLDER) -ChildPath ".\backup\$folderName-$date.zip"
+        Write-Host "⏳ Creando archivo ZIP: $destino"
+
+        Compress-Archive -Path "$BACKUP_FOLDER\*" -DestinationPath $destino -Force
+        Write-Host "✅ Backup creado: $destino"
+      }
+
+.deploy_and_backup_template:
+  stage: deploy
+  script:
+    - !reference [.backup_zip, script]
+    - |
+     echo "Deployando en $DEPLOY_FOLDER - $CI_COMMIT_BRANCH-$CI_COMMIT_REF_SLUG"
+      # Verificar y crear carpeta de deploy si no existe
+      if (-not (Test-Path -Path $DEPLOY_FOLDER -PathType Container)) {
+          Write-Host "Creating deploy folder: $DEPLOY_FOLDER" -ForegroundColor Yellow
+          try {
+              New-Item -Path $DEPLOY_FOLDER -ItemType Directory -Force | Out-Null
+              Write-Host "Deploy folder created successfully" -ForegroundColor Green
+          }
+          catch {
+              Write-Host "Error: Failed to create deploy folder - $($_.Exception.Message)" -ForegroundColor Red
+              exit 1
+          }
+      }
+      else {
+          Write-Host "Deploy folder already exists: $DEPLOY_FOLDER" -ForegroundColor Green
+      }
+     # Detener aplicación
+     New-Item -ItemType File -Path "$DEPLOY_FOLDER\app_offline.htm" -Force
+     Write-Host "✅ Archivo app_offline.htm creado"
+
+     #Esperamos 10 segundos a que baje la app
+     Start-Sleep -s 10
+
+     cp -R -force  $BUILD_FOLDER/* $DEPLOY_FOLDER
+     Write-Host "✅ Archivos copiados desde $BUILD_FOLDER"
+     echo "Deployando en $DEPLOY_FOLDER\appsettings.json "
+    
+     # Reemplazar settings según el entorno
+      if (Test-Path $SETTINGFILE) {
+          Remove-Item $DEPLOY_FOLDER\appsettings.json
+          Rename-Item -Path $SETTINGFILE -NewName $DEPLOY_FOLDER\appsettings.json -Force
+          Write-Host "✅ Archivo appsettings.json actualizado"
+      } else {
+          Write-Host "⚠️ No se encontró el archivo de configuración: $SETTINGFILE" -ForegroundColor Yellow
+      }
+
+      # Limpiar configuraciones adicionales
+      Remove-Item -Path "$DEPLOY_FOLDER\appsettings.*.json" -Force -Recurse
+      Write-Host "✅ Archivos appsettings.*.json eliminados"
+
+      # Reiniciar aplicación
+      Remove-Item -Path "$DEPLOY_FOLDER\app_offline.htm" -Force
+      Write-Host "✅ Archivo app_offline.htm eliminado. Despliegue completado."          
+        
+        

@@ -1,0 +1,93 @@
+
+image: mcr.microsoft.com/dotnet/sdk:latest
+
+include:
+  - project: 'servidores/devops'
+    file: '/pipes/backupzip.yml'
+    ref: dev
+
+stages:
+  - build
+  - build-docker 
+  - deploy
+# ### Define variables
+#
+variables:
+  OBJECTS_DIRECTORY: 'obj'
+  NUGET_PACKAGES_DIRECTORY: '.nuget'
+  SOURCE_CODE_PATH: '*.*'
+  BUILD_FOLDER: 'build'
+  PROYECT_FOLDER_NAME: 'MSWallet'
+  server: '\\cmoweb-1-tst\'
+  BUILD_PROJECT: '.\WalletMS.API\WalletMS.API.csproj'
+  DEPLOY_FOLDER: '\\cmoweb-1-tst\d$\TEST\NewPlatforms\Platforms\MSWallet'
+  
+
+build:
+  stage: build
+  script:
+    - dotnet build $BUILD_PROJECT --output $BUILD_FOLDER
+  artifacts:
+    paths:
+    - build
+
+build-docker:
+  image: docker:latest
+  services:
+    - docker:dind
+  stage: build-docker
+  tags:
+    - docker
+  script:
+    - echo "Construyendo imagen Docker..."
+    - docker build -t mswallet:latest -f WalletMS.API/Dockerfile .
+    #- mkdir -p /mnt/docker-images
+    #- mount -t cifs //servidor/imagenes-docker /mnt/docker-images -o user=usuario,password=clave,domain=dominio
+    - docker save mswallet:latest > /home/docker-images/mswallet-$CI_COMMIT_SHA.tar
+    - echo "Imagen guardada en /home/docker-images"
+  rules:
+    - if: $BUILD_DOCKER == "yes"   # Solo se ejecuta si seteas esta variable
+  when: manual  
+
+deploy:dev:
+  extends: .deploy_and_backup_template
+  stage: deploy
+  needs: ["build"]
+  variables:
+    DEPLOY_FOLDER: '$server\$CI_COMMIT_REF_SLUG\$PROYECT_FOLDER_NAME' 
+    SETTINGFILE: '$DEPLOY_FOLDER\appsettings.Development.json'
+    BACKUP_FOLDER: '$DEPLOY_FOLDER'
+  rules:
+    - if: $CI_COMMIT_REF_SLUG == "dev"
+
+deploy:test:
+  extends: .deploy_and_backup_template
+  stage: deploy
+  needs: ["build"]
+  variables:
+    DEPLOY_FOLDER: '$server\$CI_COMMIT_REF_SLUG\$PROYECT_FOLDER_NAME'
+    SETTINGFILE: '$DEPLOY_FOLDER\appsettings.Test.json'
+    BACKUP_FOLDER: '$DEPLOY_FOLDER'
+  rules:
+    - if: $CI_COMMIT_REF_SLUG == "test"
+
+deploy:prod:
+   stage: deploy
+   needs: ["build"]
+   variables:
+    DEPLOY_FOLDER: '\\payweb-1-prod\d$\prod\$PROYECT_FOLDER_NAME' 
+    SETTINGFILE: '$DEPLOY_FOLDER\appsettings.Prod.json'
+   script: 
+    - echo "Deployando en $DEPLOY_FOLDER - $CI_COMMIT_BRANCH-$CI_COMMIT_REF_SLUG"
+    - New-Item -ItemType File -Path $DEPLOY_FOLDER\app_offline.htm -Force
+    #- Esperamos 20 segundos a que baje la app
+    - Start-Sleep -s 10
+    - cp -R -force  $BUILD_FOLDER/* $DEPLOY_FOLDER
+    - echo "Deployando en $DEPLOY_FOLDER\appsettings.json "
+    - if(Test-Path $SETTINGFILE){Remove-Item $DEPLOY_FOLDER\appsettings.json}
+    - if(Test-Path $SETTINGFILE){Rename-Item -Path $SETTINGFILE -NewName $DEPLOY_FOLDER\appsettings.json -Force }else{Write-Host "no existe archivo de settings."}
+    - Remove-Item -Path $DEPLOY_FOLDER\appsettings.*.json -Force
+    - Remove-Item -Path $DEPLOY_FOLDER\app_offline.htm -Force
+   rules:
+    - if: $CI_COMMIT_REF_SLUG == "main"
+   when: manual
