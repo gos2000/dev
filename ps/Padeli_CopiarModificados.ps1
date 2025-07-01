@@ -1,4 +1,5 @@
 ﻿#version 2.0 2023
+Write-Host (Split-Path $MyInvocation.InvocationName) 
 $actualPathScript ="c:\Gabriel\_autoPublish"
 
 set-location $actualPathScript 
